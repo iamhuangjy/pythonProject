@@ -1,2 +1,7 @@
 .vscode
 venv
+./resource/music
+./resource/wav
+./build
+./dist.7z
+./dist

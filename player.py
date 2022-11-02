@@ -1,7 +1,10 @@
 import _thread
 import random
+import wave
 from urllib.request import urlretrieve
 
+import librosa
+import numpy
 from PyQt5.QtWidgets import (QWidget, QDesktopWidget,
                              QMessageBox, QHBoxLayout, QVBoxLayout, QSlider, QListWidget,
                              QPushButton, QLabel, QFileDialog, QLineEdit, QTableWidget, QTableWidgetItem,
@@ -111,8 +114,6 @@ class Player(QWidget):
         vb.setMouseEnabled(x=True, y=False)
         vb.setMenuEnabled(False)
         self.plt3 = pg.PlotWidget(viewBox=vb)
-        self.hl = pg.LinearRegionItem([0, 100])
-        self.hl.setBounds([0, 1000])
         self.minX = 0
         self.maxX = 100000
 
@@ -120,9 +121,9 @@ class Player(QWidget):
             self.hl.setZValue(10)
             self.minX, self.maxX = self.hl.getRegion()
 
+        self.hl = pg.LinearRegionItem()
         self.hl.sigRegionChanged.connect(update)
         self.plt3.addItem(self.hl)
-
         self.wavBoxAbout.addWidget(self.plt3)
 
         self.hBoxAbout = QHBoxLayout()
@@ -214,7 +215,6 @@ class Player(QWidget):
         if not self.player.isAudioAvailable():
             self.setCurPlaying()
         if self.is_pause or self.is_switching:
-            self.plt3.plot().clear()
             self.drawWavImageByPygraph(self.cur_playing_song)
             self.player.play()
             self.is_pause = False
@@ -373,7 +373,7 @@ class Player(QWidget):
         # 添加提示
         self.ui.setText("正在下载: 《{}》...".format(song_name))
         # 下载保存
-        urlretrieve(song_url, r"{}.mp3".format(self.cur_path + '/' + song_name))
+        urlretrieve(song_url, r"{}.wav".format(self.cur_path + '/' + song_name))
         # 添加提示
         self.ui.setText("下载完成: 《{}》".format(song_name))
 
@@ -417,18 +417,52 @@ class Player(QWidget):
         return widget
 
     """
-    mp3转wav
-    mp3 : mp3文件全路径
+    所有文件转wav
+    wav : 文件全路径
     wav : mav文件存储路径
     """
+    def trans_wav(self, file):
+        wav="./resource/wav/" + file.split('/')[-1].split('.')[0] + ".wav"
+        if not os.path.exists("./resource/wav/"):
+            os.makedirs("./resource/wav/")
+        if file.endswith('wav'):
+            self.trans_wav_to_other(file, wav,'wav')
+        elif file.endswith('mp3'):
+            self.trans_mp3_to_other(file, wav, 'wav')
+        elif file.endswith('m4a'):
+            self.trans_m4a_to_other(file, wav, 'wav')
+        elif file.endswith('flac'):
+            self.trans_flac_to_other(file, wav, 'wav')
+        elif file.endswith('ogg'):
+            self.trans_ogg_to_other(file, wav, 'wav')
+        else:
+            return file
+        self.cur_playing_wav=wav
+        return wav
 
-    def mp32wav(self, mp3, wav):
-        sound = AudioSegment.from_mp3(mp3)
-        sound.export(wav, format="wav")
+    def trans_mp3_to_other(self,filepath, newFile,hz):
+        song = AudioSegment.from_mp3(filepath)
+        song.export(newFile, format=str(hz))
+
+    def trans_wav_to_other(self,filepath, newFile,hz):
+        song = AudioSegment.from_wav(filepath)
+        song.export(newFile, format=str(hz))
+
+    def trans_ogg_to_other(self,filepath, newFile,hz):
+        song = AudioSegment.from_ogg(filepath)
+        song.export(newFile, format=str(hz))
+
+    def trans_flac_to_other(self,filepath, newFile,hz):
+        song = AudioSegment.from_file(filepath)
+        song.export(newFile, format=str(hz))
+
+    def trans_m4a_to_other(self,filepath, newFile,hz):
+        song = AudioSegment.from_file(filepath)
+        song.export(newFile, format=str(hz))
 
     """
     剪切mp3文件
-    mp3 : mp3文件全路径
+    wav : mp3文件全路径
     start : 开始时间--毫秒
     end : 结束时间--毫秒
     """
@@ -437,9 +471,10 @@ class Player(QWidget):
         if self.maxX == 0:
             print("请选择文件内容")
         else:
-            song = AudioSegment.from_mp3(self.cur_playing_song)
-            slice = song[self.minX: self.maxX]
-            slice.export(self.cur_path+'/'+'test1.mp3', format="mp3")
+            file_path = QFileDialog.getSaveFileName(self, "选取保存路径", './', "mp3 files(*.mp3)")
+            song = AudioSegment.from_wav(self.cur_playing_wav)
+            slice = song[self.minX * 1000: self.maxX * 1000]
+            slice.export(file_path[0].split('/')[-1] + ".mp3", format="mp3")
 
     """
     读取wav文件内容，画出波形图,利用的是Matplotlib
@@ -464,12 +499,22 @@ class Player(QWidget):
     wav : wav文件全路径
     """
 
-    def drawWavImageByPygraph(self, wav):
-        self.plt3.plot().clear()
-        x = np.arange(1000)
-        y = np.random.normal(200, 50, 1000)
+    def drawWavImageByPygraph(self, mp3):
+        self.plt3.clearPlots()
+        # 将所有非wav的文件转为wav
+        wavfile = self.trans_wav(mp3)
+        wf = wave.open(wavfile, "rb")  # 打开wav
+        params = wf.getparams()  # 参数获取
+        # 获取通道数 获取数据点数 获取帧率 获取帧数
+        nchannels, sampwidth, framerate, nframes = params[:4]
+        wf.close()
+        time = numpy.arange(0, nframes) * (1.0 / framerate)
+        self.hl.setBounds([0, len(time)])
+        self.hl.setRegion(numpy.arange(0, len(time) / 3))
+        # 直接读取mp3音频文件
+        y, sr = librosa.load(wavfile, sr=None, mono=True, offset=0.0, duration=None)
         pen = pg.mkPen(color='green')
-        self.plt3.plot(x, y, pen=pen)
+        self.plt3.plot(time, y, pen=pen)
 
 
 class CustomViewBox(pg.ViewBox):

@@ -42,7 +42,7 @@ def migu_search_api(search_name):
         buf["song_name"] = item["songName"]
         buf["song_user"] = item["singerName"]
         buf["song_time"] = ""
-        buf["song_url"] = item["mp3"]
+        buf["song_url"] = item["wav"]
 
         # 去除重复的歌曲
         song_find_flg = 0
